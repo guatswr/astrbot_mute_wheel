@@ -22,7 +22,7 @@ class WheelOutcome:
     requested_seconds: int
 
 
-# 每个条目对应 GIF 中的一个扇区。重复条目会自然形成相应权重。
+# 每个条目对应 GIF 中的一个扇区；服务层会排除超过当前禁言上限的条目。
 WHEEL_OUTCOMES: tuple[WheelOutcome, ...] = (
     WheelOutcome("00_2_hours.png", "2小时", 2 * 60 * 60),
     WheelOutcome("01_10_minutes.png", "10分钟", 10 * 60),

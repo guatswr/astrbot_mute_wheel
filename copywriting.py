@@ -50,7 +50,7 @@ RESCUE_AFTER_MUTE_ACTION = "从口球模式里捞出来了"
 RESCUE_BEFORE_MUTE_ACTION = "在执行前成功拦下了禁言"
 
 ROUND_FAILURE_TEXT = (
-    "呜……转盘模块执行失败了。请确认机器人拥有群管理员权限，"
+    "呜……转盘模块执行失败了。请确认亚托莉拥有群管理员权限，"
 )
 
 

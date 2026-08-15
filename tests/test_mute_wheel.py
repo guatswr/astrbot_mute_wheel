@@ -278,7 +278,7 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(52, recalled)
         self.assertNotIn(101, recalled)
 
-    def test_all_frames_exist_and_year_is_clamped(self) -> None:
+    def test_all_frames_exist_and_over_limit_results_are_excluded(self) -> None:
         service = self.make_service()
         self.assertEqual(len(models_module.WHEEL_OUTCOMES), 18)
         for outcome in models_module.WHEEL_OUTCOMES:
@@ -292,6 +292,19 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertGreater(year.requested_seconds, service._max_mute_seconds())
         self.assertEqual(service._max_mute_seconds(), 30 * 24 * 60 * 60)
+        eligible = service._eligible_outcomes()
+        self.assertEqual(len(eligible), 17)
+        self.assertNotIn(year, eligible)
+        self.assertTrue(
+            all(
+                item.requested_seconds <= service._max_mute_seconds()
+                for item in eligible
+            )
+        )
+
+    def test_default_self_rescue_countdown_is_ten_seconds(self) -> None:
+        service = service_module.WheelService()
+        self.assertEqual(service._countdown_seconds(), 10.0)
 
     def test_message_id_response_shapes(self) -> None:
         extract = gateway_module.extract_message_id

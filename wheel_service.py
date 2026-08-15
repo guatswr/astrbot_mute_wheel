@@ -26,6 +26,7 @@ try:
         ANIMATION_PATH,
         FRAME_DIR,
         WHEEL_OUTCOMES,
+        WheelOutcome,
         WheelSession,
     )
 except ImportError:  # 兼容直接执行 main.py 的本地测试环境。
@@ -43,6 +44,7 @@ except ImportError:  # 兼容直接执行 main.py 的本地测试环境。
         ANIMATION_PATH,
         FRAME_DIR,
         WHEEL_OUTCOMES,
+        WheelOutcome,
         WheelSession,
     )
 
@@ -70,7 +72,10 @@ class WheelService:
                 ", ".join(str(path) for path in missing),
             )
             return
-        logger.info("禁言大转盘已加载：18 个等权扇区可用。")
+        logger.info(
+            "禁言大转盘已加载：%s 个停帧符合当前禁言上限。",
+            len(self._eligible_outcomes()),
+        )
 
     async def start_round(
         self,
@@ -107,18 +112,14 @@ class WheelService:
                 busy = True
             else:
                 busy = False
-                outcome = secrets.choice(WHEEL_OUTCOMES)
-                effective_seconds = min(
-                    outcome.requested_seconds,
-                    self._max_mute_seconds(),
-                )
+                outcome = secrets.choice(self._eligible_outcomes())
                 session = WheelSession(
                     group_id=group_id,
                     target_id=sender_id,
                     target_name=self._event_sender_name(event, sender_id),
                     bot=event.bot,
                     outcome=outcome,
-                    effective_seconds=effective_seconds,
+                    effective_seconds=outcome.requested_seconds,
                 )
                 session.track_user_message(incoming_id)
                 self._sessions[group_id] = session
@@ -517,7 +518,7 @@ class WheelService:
         return self._config_float("freeze_display_seconds", 3.0)
 
     def _countdown_seconds(self) -> float:
-        return self._config_float("countdown_seconds", 30.0)
+        return self._config_float("countdown_seconds", 10.0)
 
     def _cleanup_seconds(self) -> float:
         return self._config_float("cleanup_display_seconds", 3.0)
@@ -530,8 +531,17 @@ class WheelService:
         return self._config_int(
             "max_mute_seconds",
             30 * 24 * 60 * 60,
-            minimum=1,
+            minimum=60,
             maximum=30 * 24 * 60 * 60,
+        )
+
+    def _eligible_outcomes(self) -> tuple[WheelOutcome, ...]:
+        """只返回能够按停帧标注时长原样执行的结果。"""
+        maximum = self._max_mute_seconds()
+        return tuple(
+            outcome
+            for outcome in WHEEL_OUTCOMES
+            if outcome.requested_seconds <= maximum
         )
 
     def _recall_user_messages(self) -> bool:

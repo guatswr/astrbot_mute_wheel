@@ -12,7 +12,7 @@
   "countdown_seconds": {
     "description": "公布结果后到执行禁言的等待秒数",
     "type": "float",
-    "default": 30.0,
+    "default": 10.0,
     "hint": "抽取者可在此期间发送 wssb 或“亚托莉我错了”求饶。"
   },
   "cleanup_display_seconds": {
@@ -30,7 +30,7 @@
     "description": "单次实际禁言时长上限（秒）",
     "type": "int",
     "default": 2592000,
-    "hint": "代码还会强制限制在 QQ 常见的 30 天上限内。轮盘的“1年”默认按 30 天执行。"
+    "hint": "范围为 60 秒至 QQ 常见的 30 天上限；高于此上限的停帧不会参与抽取，确保图片与实际禁言时长一致。"
   },
   "privileged_member_messages": {
     "description": "管理员或群主尝试转盘时随机发送的文案",
