@@ -18,7 +18,7 @@ PLEA_TOO_LATE_NOTICE = "太迟啦，禁言指令已经执行啦！现在只能�
 
 RESCUE_NO_SESSION_NOTICE = "目前没有需要救援的对象。高性能雷达可没有漏看哦。"
 RESCUE_SELF_NOTICE = "不行！nssb 是友情救援，本人不能自己捞自己。"
-RESCUE_RUNNING_NOTICE = "救援程序已经在运行了，稍微等一下啦。"
+RESCUE_NOT_MUTED_NOTICE = "还没到救援时间啦！nssb 只能在对方被禁言后使用。"
 RESCUE_FAILED_NOTICE = (
     "解禁失败了……才、才不是我不高性能！请检查 ATRI 是不是群管理员。"
 )
@@ -43,11 +43,10 @@ PARDON_TEXT = (
 )
 
 RESCUE_SUCCESS_PREFIX = "友情救援认证成功！"
-RESCUE_SUCCESS_TEMPLATE = (
-    "已经被你{action}。哼哼，高性能机器人也会尊重群友的选择啦！"
+RESCUE_SUCCESS_TEXT = (
+    "已经被你从口球模式里捞出来了。"
+    "哼哼，高性能机器人也会尊重群友的选择啦！"
 )
-RESCUE_AFTER_MUTE_ACTION = "从口球模式里捞出来了"
-RESCUE_BEFORE_MUTE_ACTION = "在执行前成功拦下了禁言"
 
 ROUND_FAILURE_TEXT = (
     "呜……转盘模块执行失败了。请确认亚托莉拥有群管理员权限，"
@@ -65,7 +64,7 @@ RESULT_TEMPLATE = (
     "锵锵——指针停下啦！{duration_note}\n"
     "高性能的我会在 {delay} 后执行。\n"
     "本人发送“wssb”或“亚托莉我错了”可以求饶；\n"
-    "其他群友发送“nssb”可以友情救援。"
+    "禁言生效后，其他群友可以发送“nssb”友情救援。"
 )
 
 
@@ -131,13 +130,6 @@ def result_text(
         duration_note=duration_note,
         delay=format_seconds(countdown_seconds),
     )
-
-
-def rescue_success_text(was_muted: bool) -> str:
-    action = (
-        RESCUE_AFTER_MUTE_ACTION if was_muted else RESCUE_BEFORE_MUTE_ACTION
-    )
-    return RESCUE_SUCCESS_TEMPLATE.format(action=action)
 
 
 def format_seconds(seconds: float | int) -> str:

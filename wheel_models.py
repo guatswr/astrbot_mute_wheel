@@ -17,31 +17,36 @@ RESCUE_TEXT = "nssb"
 
 @dataclass(frozen=True, slots=True)
 class WheelOutcome:
-    frame_filename: str
+    frame_index: int
     display_name: str
     requested_seconds: int
+
+    @property
+    def frame_filename(self) -> str:
+        """用帧序号与实际秒数生成可自动校验的文件名。"""
+        return f"{self.frame_index:02d}_{self.requested_seconds}s.png"
 
 
 # 每个条目对应 GIF 中的一个扇区；服务层会排除超过当前禁言上限的条目。
 WHEEL_OUTCOMES: tuple[WheelOutcome, ...] = (
-    WheelOutcome("00_2_hours.png", "2小时", 2 * 60 * 60),
-    WheelOutcome("01_10_minutes.png", "10分钟", 10 * 60),
-    WheelOutcome("02_3_days.png", "3天", 3 * 24 * 60 * 60),
-    WheelOutcome("03_1_minute.png", "1分钟", 60),
-    WheelOutcome("04_1_day.png", "1天", 24 * 60 * 60),
-    WheelOutcome("05_30_minutes.png", "半小时", 30 * 60),
-    WheelOutcome("06_1_month.png", "1月", 30 * 24 * 60 * 60),
-    WheelOutcome("07_5_minutes.png", "5分钟", 5 * 60),
-    WheelOutcome("08_1_hour.png", "1小时", 60 * 60),
-    WheelOutcome("09_2_hours.png", "2小时", 2 * 60 * 60),
-    WheelOutcome("10_1_year.png", "1年", 365 * 24 * 60 * 60),
-    WheelOutcome("11_10_minutes.png", "10分钟", 10 * 60),
-    WheelOutcome("12_3_days.png", "3天", 3 * 24 * 60 * 60),
-    WheelOutcome("13_1_minute.png", "1分钟", 60),
-    WheelOutcome("14_1_day.png", "1天", 24 * 60 * 60),
-    WheelOutcome("15_30_minutes.png", "半小时", 30 * 60),
-    WheelOutcome("16_1_month.png", "1月", 30 * 24 * 60 * 60),
-    WheelOutcome("17_5_minutes.png", "5分钟", 5 * 60),
+    WheelOutcome(0, "2小时", 2 * 60 * 60),
+    WheelOutcome(1, "10分钟", 10 * 60),
+    WheelOutcome(2, "3天", 3 * 24 * 60 * 60),
+    WheelOutcome(3, "1分钟", 60),
+    WheelOutcome(4, "1天", 24 * 60 * 60),
+    WheelOutcome(5, "半小时", 30 * 60),
+    WheelOutcome(6, "1月", 30 * 24 * 60 * 60),
+    WheelOutcome(7, "5分钟", 5 * 60),
+    WheelOutcome(8, "1小时", 60 * 60),
+    WheelOutcome(9, "2小时", 2 * 60 * 60),
+    WheelOutcome(10, "1年", 365 * 24 * 60 * 60),
+    WheelOutcome(11, "10分钟", 10 * 60),
+    WheelOutcome(12, "3天", 3 * 24 * 60 * 60),
+    WheelOutcome(13, "1分钟", 60),
+    WheelOutcome(14, "1天", 24 * 60 * 60),
+    WheelOutcome(15, "半小时", 30 * 60),
+    WheelOutcome(16, "1月", 30 * 24 * 60 * 60),
+    WheelOutcome(17, "5分钟", 5 * 60),
 )
 
 

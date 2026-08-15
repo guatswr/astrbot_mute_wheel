@@ -278,12 +278,73 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(52, recalled)
         self.assertNotIn(101, recalled)
 
+    async def test_rescue_is_rejected_before_mute_takes_effect(self) -> None:
+        service = self.make_service()
+        bot = FakeBot()
+        outcome = models_module.WHEEL_OUTCOMES[7]
+        session = models_module.WheelSession(
+            group_id=123,
+            target_id=456,
+            target_name="tester",
+            bot=bot,
+            outcome=outcome,
+            effective_seconds=300,
+            state="pending",
+        )
+        session.task = asyncio.create_task(asyncio.sleep(3600))
+        service._sessions[123] = session
+
+        await service.handle_rescue(FakeEvent(bot, 53), 123, 789)
+
+        self.assertIs(service._sessions[123], session)
+        self.assertEqual(session.state, "pending")
+        self.assertFalse(session.task.cancelled())
+        self.assertNotIn(
+            "set_group_ban",
+            [action for action, _params in bot.api.actions],
+        )
+        await service._cancel_task(session.task)
+        await service.terminate()
+
     def test_all_frames_exist_and_over_limit_results_are_excluded(self) -> None:
         service = self.make_service()
         self.assertEqual(len(models_module.WHEEL_OUTCOMES), 18)
+        recognized = [
+            (item.frame_index, item.display_name, item.requested_seconds)
+            for item in models_module.WHEEL_OUTCOMES
+        ]
+        self.assertEqual(
+            recognized,
+            [
+                (0, "2小时", 7200),
+                (1, "10分钟", 600),
+                (2, "3天", 259200),
+                (3, "1分钟", 60),
+                (4, "1天", 86400),
+                (5, "半小时", 1800),
+                (6, "1月", 2592000),
+                (7, "5分钟", 300),
+                (8, "1小时", 3600),
+                (9, "2小时", 7200),
+                (10, "1年", 31536000),
+                (11, "10分钟", 600),
+                (12, "3天", 259200),
+                (13, "1分钟", 60),
+                (14, "1天", 86400),
+                (15, "半小时", 1800),
+                (16, "1月", 2592000),
+                (17, "5分钟", 300),
+            ],
+        )
         for outcome in models_module.WHEEL_OUTCOMES:
             frame = models_module.FRAME_DIR / outcome.frame_filename
             self.assertTrue(Path(frame).is_file(), outcome.frame_filename)
+            stem_parts = Path(outcome.frame_filename).stem.split("_")
+            self.assertEqual(int(stem_parts[0]), outcome.frame_index)
+            self.assertEqual(
+                int(stem_parts[1].removesuffix("s")),
+                outcome.requested_seconds,
+            )
 
         year = next(
             item
@@ -301,6 +362,21 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
                 for item in eligible
             )
         )
+
+    def test_rebuilt_gif_uses_thirty_millisecond_frame_delays(self) -> None:
+        data = models_module.ANIMATION_PATH.read_bytes()
+        marker = b"\x21\xf9\x04"
+        delays = []
+        cursor = 0
+        while True:
+            offset = data.find(marker, cursor)
+            if offset < 0:
+                break
+            delays.append(
+                int.from_bytes(data[offset + 4 : offset + 6], "little") * 10
+            )
+            cursor = offset + 8
+        self.assertEqual(delays, [30] * 18)
 
     def test_default_self_rescue_countdown_is_ten_seconds(self) -> None:
         service = service_module.WheelService()

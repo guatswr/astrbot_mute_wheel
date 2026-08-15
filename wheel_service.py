@@ -252,10 +252,8 @@ class WheelService:
         sender_id: int,
     ) -> None:
         incoming_id = getattr(event.message_obj, "message_id", None)
-        task: asyncio.Task[Any] | None = None
         session: WheelSession | None = None
         notice: str | None = None
-        was_muted = False
 
         async with self._lock_for(group_id):
             session = self._sessions.get(group_id)
@@ -263,27 +261,22 @@ class WheelService:
                 notice = copywriting.RESCUE_NO_SESSION_NOTICE
             elif sender_id == session.target_id:
                 notice = copywriting.RESCUE_SELF_NOTICE
-            elif session.state not in {"spinning", "pending", "muted"}:
-                notice = copywriting.RESCUE_RUNNING_NOTICE
+            elif session.state != "muted":
+                notice = copywriting.RESCUE_NOT_MUTED_NOTICE
             else:
-                was_muted = session.state == "muted"
                 session.state = "rescuing"
-                if was_muted:
-                    try:
-                        await set_group_ban(
-                            session.bot,
-                            session.group_id,
-                            session.target_id,
-                            0,
-                        )
-                    except Exception:
-                        session.state = "muted"
-                        notice = copywriting.RESCUE_FAILED_NOTICE
-                    else:
-                        session.state = "rescued"
+                try:
+                    await set_group_ban(
+                        session.bot,
+                        session.group_id,
+                        session.target_id,
+                        0,
+                    )
+                except Exception:
+                    session.state = "muted"
+                    notice = copywriting.RESCUE_FAILED_NOTICE
                 else:
                     session.state = "rescued"
-                    task = session.task
 
         if notice is not None:
             await self._temporary_notice(
@@ -296,13 +289,12 @@ class WheelService:
             return
 
         assert session is not None
-        await self._cancel_task(task)
         await self._cancel_task(session.expiry_task)
         message = [
             at_segment(sender_id),
             text_segment(f" {copywriting.RESCUE_SUCCESS_PREFIX}"),
             at_segment(session.target_id),
-            text_segment(f" {copywriting.rescue_success_text(was_muted)}"),
+            text_segment(f" {copywriting.RESCUE_SUCCESS_TEXT}"),
         ]
         await self._announce_and_cleanup(session, message)
 

@@ -2,7 +2,7 @@ name: astrbot_plugin_mute_wheel
 display_name: QQ群禁言大转盘
 desc: 发送禁言转盘动画并随机禁言，支持本人限时求饶、群友救援和本轮消息自动撤回。
 short_desc: 带求饶和救援机制的 QQ 群禁言大转盘。
-version: v1.5.0
+version: v1.6.0
 author: Taropoi
 repo: "https://github.com/guatswr/astrbot_mute_wheel"
 support_platforms:
