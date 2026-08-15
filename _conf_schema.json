@@ -5,9 +5,10 @@
     "default": 3.0
   },
   "freeze_display_seconds": {
-    "description": "抽奖定格图展示秒数",
+    "description": "定格图发送后到公布结果的间隔秒数",
     "type": "float",
-    "default": 3.0
+    "default": 3.0,
+    "hint": "定格图不按固定时间自动撤回；求饶或救援成功时会随本轮消息一起清理。"
   },
   "countdown_seconds": {
     "description": "公布结果后到执行禁言的等待秒数",
@@ -16,7 +17,7 @@
     "hint": "抽取者可在此期间发送 wssb 或“亚托莉我错了”求饶。"
   },
   "cleanup_display_seconds": {
-    "description": "求饶、救援或临时提示文案展示秒数",
+    "description": "成功、失败或临时消息在自动清理前的保留秒数",
     "type": "float",
     "default": 3.0
   },
@@ -38,10 +39,76 @@
     "default": [],
     "hint": "留空时使用 copywriting.py 中的默认文案；多条文案会按群洗牌并全部轮完后再洗牌，{role} 会替换为“管理员”或“群主”。"
   },
-  "recall_user_messages": {
-    "description": "收尾时撤回转盘触发消息和无效口令",
+  "auto_recall_animation": {
+    "description": "展示时间结束后自动撤回旋转 GIF",
     "type": "bool",
     "default": true,
-    "hint": "成功的求饶、救援口令及对应文案始终保留；撤回群友消息需要机器人拥有群管理员权限。"
+    "hint": "关闭后 GIF 在正常流程中不会按时自动撤回。"
+  },
+  "recall_animation_on_cleanup": {
+    "description": "求饶或异常收尾时撤回旋转 GIF",
+    "type": "bool",
+    "default": true
+  },
+  "auto_recall_freeze_frame": {
+    "description": "展示间隔结束后自动撤回定格图",
+    "type": "bool",
+    "default": false,
+    "hint": "默认关闭，因此正常流程中的定格图会保留。"
+  },
+  "recall_freeze_frame_on_cleanup": {
+    "description": "求饶或救援成功时撤回定格图",
+    "type": "bool",
+    "default": true
+  },
+  "auto_recall_result_after_mute": {
+    "description": "禁言生效后自动撤回结果文案",
+    "type": "bool",
+    "default": false
+  },
+  "recall_result_on_cleanup": {
+    "description": "求饶或救援成功时撤回结果文案",
+    "type": "bool",
+    "default": true
+  },
+  "auto_recall_temporary_notice": {
+    "description": "自动撤回忙碌、无效口令等临时提示",
+    "type": "bool",
+    "default": true
+  },
+  "auto_recall_privileged_notice": {
+    "description": "自动撤回管理员或群主的权限拒绝文案",
+    "type": "bool",
+    "default": false,
+    "hint": "默认关闭，权限拒绝文案会保留。"
+  },
+  "auto_recall_success_notice": {
+    "description": "自动撤回求饶或救援成功文案",
+    "type": "bool",
+    "default": false,
+    "hint": "默认关闭，成功文案会保留。"
+  },
+  "auto_recall_failure_notice": {
+    "description": "自动撤回转盘执行失败文案",
+    "type": "bool",
+    "default": true
+  },
+  "recall_trigger_message": {
+    "description": "收尾时撤回群友发送的“禁言大转盘”",
+    "type": "bool",
+    "default": true,
+    "hint": "撤回群友消息需要机器人拥有群管理员权限。"
+  },
+  "recall_invalid_command_message": {
+    "description": "自动撤回无效或时机不正确的口令",
+    "type": "bool",
+    "default": true,
+    "hint": "包括忙碌时的重复触发、无效求饶和提前发送的 nssb。"
+  },
+  "recall_success_command_message": {
+    "description": "求饶或救援成功后撤回对应口令",
+    "type": "bool",
+    "default": false,
+    "hint": "默认关闭，因此成功的 wssb、认错或 nssb 会保留。"
   }
 }

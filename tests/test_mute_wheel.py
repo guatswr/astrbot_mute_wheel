@@ -64,6 +64,7 @@ plugin_module = importlib.import_module("main")
 copywriting_module = importlib.import_module("copywriting")
 gateway_module = importlib.import_module("onebot_gateway")
 models_module = importlib.import_module("wheel_models")
+policy_module = importlib.import_module("recall_policy")
 service_module = importlib.import_module("wheel_service")
 
 
@@ -120,7 +121,7 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
             }
         )
 
-    async def test_full_round_sends_retracts_and_mutes(self) -> None:
+    async def test_full_round_keeps_freeze_frame_and_mutes(self) -> None:
         service = self.make_service()
         bot = FakeBot()
         outcome = models_module.WHEEL_OUTCOMES[0]
@@ -139,22 +140,68 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
 
         actions = [action for action, _params in bot.api.actions]
         self.assertEqual(
-            actions[:6],
+            actions[:5],
             [
                 "send_group_msg",
                 "delete_msg",
                 "send_group_msg",
-                "delete_msg",
                 "send_group_msg",
                 "set_group_ban",
             ],
         )
-        ban_params = bot.api.actions[5][1]
+        ban_params = bot.api.actions[4][1]
         self.assertEqual(ban_params["group_id"], 123)
         self.assertEqual(ban_params["user_id"], 456)
         self.assertEqual(ban_params["duration"], 7200)
         self.assertEqual(session.state, "muted")
+        recalled = [
+            params["message_id"]
+            for action, params in bot.api.actions
+            if action == "delete_msg"
+        ]
+        self.assertEqual(recalled, [101])
+        self.assertIn(102, session.bot_message_ids)
 
+        await service._cancel_task(session.expiry_task)
+        await service.terminate()
+
+    async def test_timed_bot_recall_options_are_independent(self) -> None:
+        service = service_module.WheelService(
+            {
+                "animation_display_seconds": 0,
+                "freeze_display_seconds": 0,
+                "countdown_seconds": 0,
+                "rescue_window_seconds": 300,
+                "auto_recall_animation": False,
+                "recall_animation_on_cleanup": False,
+                "auto_recall_freeze_frame": True,
+                "recall_freeze_frame_on_cleanup": False,
+                "auto_recall_result_after_mute": True,
+                "recall_result_on_cleanup": False,
+            }
+        )
+        bot = FakeBot()
+        outcome = models_module.WHEEL_OUTCOMES[0]
+        session = models_module.WheelSession(
+            group_id=123,
+            target_id=456,
+            target_name="tester",
+            bot=bot,
+            outcome=outcome,
+            effective_seconds=outcome.requested_seconds,
+        )
+        service._sessions[123] = session
+
+        await service._run_round(session)
+
+        recalled = [
+            params["message_id"]
+            for action, params in bot.api.actions
+            if action == "delete_msg"
+        ]
+        self.assertEqual(recalled, [102, 103])
+        self.assertNotIn(101, recalled)
+        self.assertEqual(session.bot_message_ids, [])
         await service._cancel_task(session.expiry_task)
         await service.terminate()
 
@@ -222,6 +269,7 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         )
         session.track_user_message(50)
         session.track_bot_message(88)
+        session.track_bot_message(89)
         session.task = asyncio.create_task(asyncio.sleep(3600))
         service._sessions[123] = session
 
@@ -237,9 +285,41 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
             for action, params in bot.api.actions
             if action == "delete_msg"
         }
-        self.assertTrue({50, 88}.issubset(recalled))
+        self.assertTrue({50, 88, 89}.issubset(recalled))
         self.assertNotIn(51, recalled)
         self.assertNotIn(101, recalled)
+
+    async def test_success_command_and_notice_can_be_recalled(self) -> None:
+        service = service_module.WheelService(
+            {
+                "cleanup_display_seconds": 0,
+                "recall_success_command_message": True,
+                "auto_recall_success_notice": True,
+            }
+        )
+        bot = FakeBot()
+        outcome = models_module.WHEEL_OUTCOMES[3]
+        session = models_module.WheelSession(
+            group_id=123,
+            target_id=456,
+            target_name="tester",
+            bot=bot,
+            outcome=outcome,
+            effective_seconds=60,
+            state="pending",
+        )
+        session.task = asyncio.create_task(asyncio.sleep(3600))
+        service._sessions[123] = session
+
+        await service.handle_plea(FakeEvent(bot, 51), 123, 456)
+
+        recalled = {
+            params["message_id"]
+            for action, params in bot.api.actions
+            if action == "delete_msg"
+        }
+        self.assertEqual(recalled, {51, 101})
+        self.assertNotIn(123, service._sessions)
 
     async def test_rescue_keeps_command_and_success_copy(self) -> None:
         service = self.make_service()
@@ -256,6 +336,7 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         )
         session.track_user_message(50)
         session.track_bot_message(88)
+        session.track_bot_message(89)
         service._sessions[123] = session
 
         await service.handle_rescue(FakeEvent(bot, 52), 123, 789)
@@ -274,7 +355,7 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
             for action, params in bot.api.actions
             if action == "delete_msg"
         }
-        self.assertTrue({50, 88}.issubset(recalled))
+        self.assertTrue({50, 88, 89}.issubset(recalled))
         self.assertNotIn(52, recalled)
         self.assertNotIn(101, recalled)
 
@@ -381,6 +462,23 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
     def test_default_self_rescue_countdown_is_ten_seconds(self) -> None:
         service = service_module.WheelService()
         self.assertEqual(service._countdown_seconds(), 10.0)
+
+    def test_legacy_user_recall_is_only_a_fallback(self) -> None:
+        legacy_only = policy_module.RecallPolicy.from_config(
+            {"recall_user_messages": False}
+        )
+        overridden = policy_module.RecallPolicy.from_config(
+            {
+                "recall_user_messages": False,
+                "recall_trigger_message": True,
+            }
+        )
+
+        self.assertFalse(legacy_only.recall_trigger_message)
+        self.assertFalse(legacy_only.recall_invalid_command_message)
+        self.assertFalse(legacy_only.recall_success_command_message)
+        self.assertTrue(overridden.recall_trigger_message)
+        self.assertFalse(overridden.recall_invalid_command_message)
 
     def test_message_id_response_shapes(self) -> None:
         extract = gateway_module.extract_message_id

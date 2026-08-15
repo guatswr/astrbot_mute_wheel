@@ -22,6 +22,7 @@ try:
         set_group_ban,
         text_segment,
     )
+    from .recall_policy import RecallPolicy
     from .wheel_models import (
         ANIMATION_PATH,
         FRAME_DIR,
@@ -40,6 +41,7 @@ except ImportError:  # 兼容直接执行 main.py 的本地测试环境。
         set_group_ban,
         text_segment,
     )
+    from recall_policy import RecallPolicy
     from wheel_models import (
         ANIMATION_PATH,
         FRAME_DIR,
@@ -56,6 +58,7 @@ class WheelService:
         self._locks: dict[int, asyncio.Lock] = {}
         self._image_cache: dict[Path, str] = {}
         self._privileged_messages = copywriting.PrivilegedMessageShuffleBag()
+        self.recall = RecallPolicy.from_config(self.config)
 
     async def validate_assets(self) -> None:
         missing = [
@@ -121,7 +124,8 @@ class WheelService:
                     outcome=outcome,
                     effective_seconds=outcome.requested_seconds,
                 )
-                session.track_user_message(incoming_id)
+                if self.recall.recall_trigger_message:
+                    session.track_user_message(incoming_id)
                 self._sessions[group_id] = session
                 session.task = asyncio.create_task(
                     self._run_round(session),
@@ -140,24 +144,29 @@ class WheelService:
     async def _run_round(self, session: WheelSession) -> None:
         try:
             animation_id = await self._send_image(session, ANIMATION_PATH)
-            session.track_bot_message(animation_id)
+            if self.recall.recall_animation_on_cleanup:
+                session.track_bot_message(animation_id)
             await asyncio.sleep(self._animation_seconds())
-            await self._recall_one(session, animation_id)
+            if self.recall.auto_recall_animation:
+                await self._recall_one(session, animation_id)
 
             if not await self._session_is(session, "spinning"):
                 return
 
             frame_path = FRAME_DIR / session.outcome.frame_filename
             frame_id = await self._send_image(session, frame_path)
-            session.track_bot_message(frame_id)
+            if self.recall.recall_freeze_frame_on_cleanup:
+                session.track_bot_message(frame_id)
             await asyncio.sleep(self._freeze_seconds())
-            await self._recall_one(session, frame_id)
+            if self.recall.auto_recall_freeze_frame:
+                await self._recall_one(session, frame_id)
 
             if not await self._session_is(session, "spinning"):
                 return
 
             result_id = await self._send_result_message(session)
-            session.track_bot_message(result_id)
+            if self.recall.recall_result_on_cleanup:
+                session.track_bot_message(result_id)
             async with self._lock_for(session.group_id):
                 if (
                     self._sessions.get(session.group_id) is not session
@@ -182,6 +191,9 @@ class WheelService:
                     session.effective_seconds,
                 )
                 session.state = "muted"
+
+            if self.recall.auto_recall_result_after_mute:
+                await self._recall_one(session, result_id)
 
             session.expiry_task = asyncio.create_task(
                 self._expire_session(session),
@@ -225,6 +237,8 @@ class WheelService:
                 notice = copywriting.PLEA_TOO_LATE_NOTICE
             else:
                 session.state = "pardoned"
+                if self.recall.recall_success_command_message:
+                    session.track_user_message(incoming_id)
                 task = session.task
 
         if notice is not None:
@@ -277,6 +291,8 @@ class WheelService:
                     notice = copywriting.RESCUE_FAILED_NOTICE
                 else:
                     session.state = "rescued"
+                    if self.recall.recall_success_command_message:
+                        session.track_user_message(incoming_id)
 
         if notice is not None:
             await self._temporary_notice(
@@ -303,8 +319,9 @@ class WheelService:
         session: WheelSession,
         message: list[dict[str, Any]],
     ) -> None:
+        message_id: Any = None
         try:
-            await send_group_message(
+            message_id = await send_group_message(
                 session.bot,
                 session.group_id,
                 message,
@@ -313,6 +330,8 @@ class WheelService:
             logger.exception("禁言大转盘发送收尾文案失败。")
 
         await asyncio.sleep(self._cleanup_seconds())
+        if self.recall.auto_recall_success_notice:
+            await self._recall_one(session, message_id)
         await self._recall_session_messages(session)
         async with self._lock_for(session.group_id):
             if self._sessions.get(session.group_id) is session:
@@ -337,7 +356,8 @@ class WheelService:
                     text_segment(f" {copywriting.ROUND_FAILURE_TEXT}"),
                 ],
             )
-            session.track_bot_message(message_id)
+            if self.recall.auto_recall_failure_notice:
+                session.track_bot_message(message_id)
         except Exception:
             logger.error("禁言大转盘连错误提示都发送失败了：%r", error)
 
@@ -424,8 +444,7 @@ class WheelService:
 
     async def _recall_session_messages(self, session: WheelSession) -> None:
         message_ids = list(reversed(session.bot_message_ids))
-        if self._recall_user_messages():
-            message_ids.extend(reversed(session.user_message_ids))
+        message_ids.extend(reversed(session.user_message_ids))
         for message_id in message_ids:
             await self._recall_one(session, message_id)
 
@@ -444,13 +463,20 @@ class WheelService:
                 group_id,
                 [at_segment(sender_id), text_segment(f" {text}")],
             )
-            await asyncio.sleep(self._cleanup_seconds())
         except Exception:
             logger.exception("禁言大转盘发送临时提示失败。")
 
+        if (
+            self.recall.auto_recall_temporary_notice
+            or self.recall.recall_invalid_command_message
+        ):
+            await asyncio.sleep(self._cleanup_seconds())
+
         for message_id in (
-            notice_id,
-            incoming_id if self._recall_user_messages() else None,
+            notice_id if self.recall.auto_recall_temporary_notice else None,
+            incoming_id
+            if self.recall.recall_invalid_command_message
+            else None,
         ):
             if message_id is None:
                 continue
@@ -467,8 +493,9 @@ class WheelService:
         text: str,
         incoming_id: Any,
     ) -> None:
+        notice_id: Any = None
         try:
-            await send_group_message(
+            notice_id = await send_group_message(
                 bot,
                 group_id,
                 [at_segment(sender_id), text_segment(f" {text}")],
@@ -476,12 +503,19 @@ class WheelService:
         except Exception:
             logger.exception("禁言大转盘发送权限提示失败。")
 
-        if incoming_id is None or not self._recall_user_messages():
-            return
-        try:
-            await recall_message(bot, incoming_id)
-        except Exception as exc:
-            logger.debug("撤回权限触发消息 %s 失败：%r", incoming_id, exc)
+        if self.recall.auto_recall_privileged_notice:
+            await asyncio.sleep(self._cleanup_seconds())
+
+        for message_id in (
+            notice_id if self.recall.auto_recall_privileged_notice else None,
+            incoming_id if self.recall.recall_trigger_message else None,
+        ):
+            if message_id is None:
+                continue
+            try:
+                await recall_message(bot, message_id)
+            except Exception as exc:
+                logger.debug("撤回权限消息 %s 失败：%r", message_id, exc)
 
     async def _session_is(self, session: WheelSession, state: str) -> bool:
         async with self._lock_for(session.group_id):
@@ -535,9 +569,6 @@ class WheelService:
             for outcome in WHEEL_OUTCOMES
             if outcome.requested_seconds <= maximum
         )
-
-    def _recall_user_messages(self) -> bool:
-        return bool(self.config.get("recall_user_messages", True))
 
     def _config_float(self, key: str, default: float) -> float:
         try:
