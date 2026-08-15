@@ -16,7 +16,7 @@ except ImportError:  # 兼容直接执行 main.py 的本地测试环境。
     "astrbot_plugin_mute_wheel",
     "Taropoi",
     "QQ群禁言大转盘：支持求饶、群友救援与自动撤回",
-    "1.2.0",
+    "1.3.0",
 )
 class MuteWheelPlugin(Star):
     """AstrBot 插件入口；具体流程由 WheelService 负责。"""

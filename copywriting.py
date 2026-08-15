@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Sequence
+from typing import Any
 
 
 # 临时提示 -----------------------------------------------------------------
@@ -68,12 +69,47 @@ RESULT_TEMPLATE = (
 )
 
 
-def privileged_member_message(configured: object, role: str) -> str:
-    """从 WebUI 自定义文案或默认文案中随机选择一条。"""
-    messages = _clean_message_list(configured)
-    template = secrets.choice(messages or DEFAULT_PRIVILEGED_MEMBER_MESSAGES)
-    role_name = "群主" if role == "owner" else "管理员"
-    return template.replace("{role}", role_name)
+class PrivilegedMessageShuffleBag:
+    """按作用域和身份轮完所有权限拒绝文案后再重新洗牌。"""
+
+    def __init__(self) -> None:
+        self._bags: dict[tuple[Any, str, tuple[str, ...]], list[str]] = {}
+        self._last: dict[tuple[Any, str, tuple[str, ...]], str] = {}
+        self._random = secrets.SystemRandom()
+
+    def next(self, configured: object, role: str, scope: Any) -> str:
+        messages = tuple(
+            _clean_message_list(configured)
+            or DEFAULT_PRIVILEGED_MEMBER_MESSAGES
+        )
+        key = (scope, role, messages)
+        bag = self._bags.get(key)
+        if not bag:
+            bag = list(messages)
+            self._random.shuffle(bag)
+            self._avoid_cycle_boundary_repeat(bag, self._last.get(key))
+            self._bags[key] = bag
+
+        template = bag.pop()
+        self._last[key] = template
+        role_name = "群主" if role == "owner" else "管理员"
+        return template.replace("{role}", role_name)
+
+    def clear(self) -> None:
+        self._bags.clear()
+        self._last.clear()
+
+    @staticmethod
+    def _avoid_cycle_boundary_repeat(
+        bag: list[str],
+        previous: str | None,
+    ) -> None:
+        if previous is None or len(bag) < 2 or bag[-1] != previous:
+            return
+        replacement_index = next(
+            index for index, item in enumerate(bag[:-1]) if item != previous
+        )
+        bag[-1], bag[replacement_index] = bag[replacement_index], bag[-1]
 
 
 def result_text(
@@ -120,4 +156,5 @@ def format_seconds(seconds: float | int) -> str:
 def _clean_message_list(value: object) -> list[str]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         return []
-    return [str(item).strip() for item in value if str(item).strip()]
+    messages = [str(item).strip() for item in value if str(item).strip()]
+    return list(dict.fromkeys(messages))

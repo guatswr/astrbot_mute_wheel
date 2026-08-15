@@ -7,7 +7,6 @@ import types
 import unittest
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 
 def install_astrbot_stubs() -> None:
@@ -168,8 +167,7 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         bot = FakeBot()
         bot.api.member_role = "admin"
 
-        with patch("copywriting.secrets.choice", return_value="第二条 {role}"):
-            await service.start_round(FakeEvent(bot, 55), 123, 456)
+        await service.start_round(FakeEvent(bot, 55), 123, 456)
 
         self.assertNotIn(123, service._sessions)
         actions = [action for action, _params in bot.api.actions]
@@ -179,12 +177,20 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
                 "get_group_member_info",
                 "send_group_msg",
                 "delete_msg",
-                "delete_msg",
             ],
         )
         sent_message = bot.api.actions[1][1]["message"]
-        self.assertEqual(sent_message[1]["data"]["text"], " 第二条 管理员")
+        self.assertIn(
+            sent_message[1]["data"]["text"],
+            {" 第一条 管理员", " 第二条 管理员"},
+        )
         self.assertNotIn("set_group_ban", actions)
+        recalled = [
+            params["message_id"]
+            for action, params in bot.api.actions
+            if action == "delete_msg"
+        ]
+        self.assertEqual(recalled, [55])
 
     async def test_owner_is_refused_with_default_random_copy(self) -> None:
         service = self.make_service()
@@ -287,6 +293,29 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("10分钟", result)
         self.assertEqual(len(result.splitlines()), 4)
         self.assertTrue(hasattr(plugin_module.MuteWheelPlugin, "on_group_message"))
+
+    def test_privileged_copy_uses_per_scope_shuffle_bag(self) -> None:
+        bag = copywriting_module.PrivilegedMessageShuffleBag()
+        configured = [
+            "甲 {role}",
+            "乙 {role}",
+            "丙 {role}",
+            "甲 {role}",
+        ]
+
+        first_cycle = [bag.next(configured, "admin", 123) for _ in range(3)]
+        next_cycle_first = bag.next(configured, "admin", 123)
+        other_group_first = bag.next(configured, "admin", 456)
+
+        self.assertEqual(
+            set(first_cycle),
+            {"甲 管理员", "乙 管理员", "丙 管理员"},
+        )
+        self.assertNotEqual(first_cycle[-1], next_cycle_first)
+        self.assertIn(
+            other_group_first,
+            {"甲 管理员", "乙 管理员", "丙 管理员"},
+        )
 
     def test_plugin_can_be_imported_as_package(self) -> None:
         plugin_dir = Path(models_module.PLUGIN_DIR)

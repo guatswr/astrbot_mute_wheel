@@ -53,6 +53,7 @@ class WheelService:
         self._sessions: dict[int, WheelSession] = {}
         self._locks: dict[int, asyncio.Lock] = {}
         self._image_cache: dict[Path, str] = {}
+        self._privileged_messages = copywriting.PrivilegedMessageShuffleBag()
 
     async def validate_assets(self) -> None:
         missing = [
@@ -86,13 +87,14 @@ class WheelService:
             event,
         )
         if role in {"owner", "admin"}:
-            await self._temporary_notice(
+            await self._persistent_notice(
                 event.bot,
                 group_id,
                 sender_id,
-                copywriting.privileged_member_message(
+                self._privileged_messages.next(
                     self.config.get("privileged_member_messages", []),
                     role,
+                    group_id,
                 ),
                 incoming_id,
             )
@@ -469,6 +471,30 @@ class WheelService:
             except Exception as exc:
                 logger.debug("撤回临时消息 %s 失败：%r", message_id, exc)
 
+    async def _persistent_notice(
+        self,
+        bot: Any,
+        group_id: int,
+        sender_id: int,
+        text: str,
+        incoming_id: Any,
+    ) -> None:
+        try:
+            await send_group_message(
+                bot,
+                group_id,
+                [at_segment(sender_id), text_segment(f" {text}")],
+            )
+        except Exception:
+            logger.exception("禁言大转盘发送权限提示失败。")
+
+        if incoming_id is None or not self._recall_user_messages():
+            return
+        try:
+            await recall_message(bot, incoming_id)
+        except Exception as exc:
+            logger.debug("撤回权限触发消息 %s 失败：%r", incoming_id, exc)
+
     async def _session_is(self, session: WheelSession, state: str) -> bool:
         async with self._lock_for(session.group_id):
             return (
@@ -556,3 +582,4 @@ class WheelService:
         self._sessions.clear()
         self._locks.clear()
         self._image_cache.clear()
+        self._privileged_messages.clear()

@@ -36,7 +36,7 @@
     "description": "管理员或群主尝试转盘时随机发送的文案",
     "type": "list",
     "default": [],
-    "hint": "留空时使用 copywriting.py 中的默认文案；可添加多条并随机选择，{role} 会替换为“管理员”或“群主”。"
+    "hint": "留空时使用 copywriting.py 中的默认文案；多条文案会按群洗牌并全部轮完后再洗牌，{role} 会替换为“管理员”或“群主”。"
   },
   "recall_user_messages": {
     "description": "收尾时同时撤回触发、求饶和救援者的消息",
