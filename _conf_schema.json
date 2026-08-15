@@ -32,6 +32,12 @@
     "default": 2592000,
     "hint": "代码还会强制限制在 QQ 常见的 30 天上限内。轮盘的“1年”默认按 30 天执行。"
   },
+  "privileged_member_messages": {
+    "description": "管理员或群主尝试转盘时随机发送的文案",
+    "type": "list",
+    "default": [],
+    "hint": "留空时使用 copywriting.py 中的默认文案；可添加多条并随机选择，{role} 会替换为“管理员”或“群主”。"
+  },
   "recall_user_messages": {
     "description": "收尾时同时撤回触发、求饶和救援者的消息",
     "type": "bool",

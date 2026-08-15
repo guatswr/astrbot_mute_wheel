@@ -7,6 +7,7 @@ import types
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 
 def install_astrbot_stubs() -> None:
@@ -61,12 +62,17 @@ def install_astrbot_stubs() -> None:
 
 install_astrbot_stubs()
 plugin_module = importlib.import_module("main")
+copywriting_module = importlib.import_module("copywriting")
+gateway_module = importlib.import_module("onebot_gateway")
+models_module = importlib.import_module("wheel_models")
+service_module = importlib.import_module("wheel_service")
 
 
 class FakeApi:
     def __init__(self) -> None:
         self.actions: list[tuple[str, dict[str, Any]]] = []
         self.next_message_id = 100
+        self.member_role = "member"
 
     async def call_action(self, action: str, **params: Any) -> dict[str, Any]:
         self.actions.append((action, params))
@@ -76,6 +82,12 @@ class FakeApi:
                 "status": "ok",
                 "retcode": 0,
                 "data": {"message_id": self.next_message_id},
+            }
+        if action == "get_group_member_info":
+            return {
+                "status": "ok",
+                "retcode": 0,
+                "data": {"role": self.member_role},
             }
         return {"status": "ok", "retcode": 0, "data": {}}
 
@@ -97,9 +109,8 @@ class FakeEvent:
 
 
 class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
-    def make_plugin(self) -> Any:
-        return plugin_module.MuteWheelPlugin(
-            object(),
+    def make_service(self) -> Any:
+        return service_module.WheelService(
             {
                 "animation_display_seconds": 0,
                 "freeze_display_seconds": 0,
@@ -107,14 +118,14 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
                 "cleanup_display_seconds": 0,
                 "rescue_window_seconds": 300,
                 "recall_user_messages": True,
-            },
+            }
         )
 
     async def test_full_round_sends_retracts_and_mutes(self) -> None:
-        plugin = self.make_plugin()
+        service = self.make_service()
         bot = FakeBot()
-        outcome = plugin_module.WHEEL_OUTCOMES[0]
-        session = plugin_module.WheelSession(
+        outcome = models_module.WHEEL_OUTCOMES[0]
+        session = models_module.WheelSession(
             group_id=123,
             target_id=456,
             target_name="tester",
@@ -123,9 +134,9 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
             effective_seconds=outcome.requested_seconds,
         )
         session.track_user_message(50)
-        plugin._sessions[123] = session
+        service._sessions[123] = session
 
-        await plugin._run_round(session)
+        await service._run_round(session)
 
         actions = [action for action, _params in bot.api.actions]
         self.assertEqual(
@@ -145,14 +156,56 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ban_params["duration"], 7200)
         self.assertEqual(session.state, "muted")
 
-        await plugin._cancel_task(session.expiry_task)
-        await plugin.terminate()
+        await service._cancel_task(session.expiry_task)
+        await service.terminate()
+
+    async def test_admin_is_refused_before_wheel_starts(self) -> None:
+        service = self.make_service()
+        service.config["privileged_member_messages"] = [
+            "第一条 {role}",
+            "第二条 {role}",
+        ]
+        bot = FakeBot()
+        bot.api.member_role = "admin"
+
+        with patch("copywriting.secrets.choice", return_value="第二条 {role}"):
+            await service.start_round(FakeEvent(bot, 55), 123, 456)
+
+        self.assertNotIn(123, service._sessions)
+        actions = [action for action, _params in bot.api.actions]
+        self.assertEqual(
+            actions,
+            [
+                "get_group_member_info",
+                "send_group_msg",
+                "delete_msg",
+                "delete_msg",
+            ],
+        )
+        sent_message = bot.api.actions[1][1]["message"]
+        self.assertEqual(sent_message[1]["data"]["text"], " 第二条 管理员")
+        self.assertNotIn("set_group_ban", actions)
+
+    async def test_owner_is_refused_with_default_random_copy(self) -> None:
+        service = self.make_service()
+        bot = FakeBot()
+        bot.api.member_role = "owner"
+
+        await service.start_round(FakeEvent(bot, 56), 123, 456)
+
+        self.assertNotIn(123, service._sessions)
+        sent_message = bot.api.actions[1][1]["message"]
+        self.assertIn("群主", sent_message[1]["data"]["text"])
+        self.assertNotIn(
+            "set_group_ban",
+            [action for action, _params in bot.api.actions],
+        )
 
     async def test_plea_cancels_pending_round_and_cleans_messages(self) -> None:
-        plugin = self.make_plugin()
+        service = self.make_service()
         bot = FakeBot()
-        outcome = plugin_module.WHEEL_OUTCOMES[3]
-        session = plugin_module.WheelSession(
+        outcome = models_module.WHEEL_OUTCOMES[3]
+        session = models_module.WheelSession(
             group_id=123,
             target_id=456,
             target_name="tester",
@@ -164,11 +217,11 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         session.track_user_message(50)
         session.track_bot_message(101)
         session.task = asyncio.create_task(asyncio.sleep(3600))
-        plugin._sessions[123] = session
+        service._sessions[123] = session
 
-        await plugin._handle_plea(FakeEvent(bot, 51), 123, 456)
+        await service.handle_plea(FakeEvent(bot, 51), 123, 456)
 
-        self.assertNotIn(123, plugin._sessions)
+        self.assertNotIn(123, service._sessions)
         self.assertTrue(session.task.cancelled())
         actions = [action for action, _params in bot.api.actions]
         self.assertIn("send_group_msg", actions)
@@ -181,10 +234,10 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue({50, 51, 101}.issubset(recalled))
 
     async def test_other_member_can_unmute(self) -> None:
-        plugin = self.make_plugin()
+        service = self.make_service()
         bot = FakeBot()
-        outcome = plugin_module.WHEEL_OUTCOMES[7]
-        session = plugin_module.WheelSession(
+        outcome = models_module.WHEEL_OUTCOMES[7]
+        session = models_module.WheelSession(
             group_id=123,
             target_id=456,
             target_name="tester",
@@ -193,11 +246,11 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
             effective_seconds=300,
             state="muted",
         )
-        plugin._sessions[123] = session
+        service._sessions[123] = session
 
-        await plugin._handle_rescue(FakeEvent(bot, 52), 123, 789)
+        await service.handle_rescue(FakeEvent(bot, 52), 123, 789)
 
-        self.assertNotIn(123, plugin._sessions)
+        self.assertNotIn(123, service._sessions)
         ban_calls = [
             params
             for action, params in bot.api.actions
@@ -208,25 +261,41 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ban_calls[0]["user_id"], 456)
 
     def test_all_frames_exist_and_year_is_clamped(self) -> None:
-        plugin = self.make_plugin()
-        self.assertEqual(len(plugin_module.WHEEL_OUTCOMES), 18)
-        for outcome in plugin_module.WHEEL_OUTCOMES:
-            frame = plugin_module.FRAME_DIR / outcome.frame_filename
+        service = self.make_service()
+        self.assertEqual(len(models_module.WHEEL_OUTCOMES), 18)
+        for outcome in models_module.WHEEL_OUTCOMES:
+            frame = models_module.FRAME_DIR / outcome.frame_filename
             self.assertTrue(Path(frame).is_file(), outcome.frame_filename)
 
         year = next(
             item
-            for item in plugin_module.WHEEL_OUTCOMES
+            for item in models_module.WHEEL_OUTCOMES
             if item.display_name == "1年"
         )
-        self.assertGreater(year.requested_seconds, plugin._max_mute_seconds())
-        self.assertEqual(plugin._max_mute_seconds(), 30 * 24 * 60 * 60)
+        self.assertGreater(year.requested_seconds, service._max_mute_seconds())
+        self.assertEqual(service._max_mute_seconds(), 30 * 24 * 60 * 60)
 
     def test_message_id_response_shapes(self) -> None:
-        extract = plugin_module.MuteWheelPlugin._extract_message_id
+        extract = gateway_module.extract_message_id
         self.assertEqual(extract({"message_id": 1}), 1)
         self.assertEqual(extract({"data": {"message_id": 2}}), 2)
         self.assertIsNone(extract({"data": {}}))
+
+    def test_copywriting_is_kept_in_dedicated_module(self) -> None:
+        self.assertIn("高性能", copywriting_module.PARDON_TEXT)
+        result = copywriting_module.result_text("10分钟", 600, 600, 30)
+        self.assertIn("10分钟", result)
+        self.assertEqual(len(result.splitlines()), 4)
+        self.assertTrue(hasattr(plugin_module.MuteWheelPlugin, "on_group_message"))
+
+    def test_plugin_can_be_imported_as_package(self) -> None:
+        plugin_dir = Path(models_module.PLUGIN_DIR)
+        sys.path.insert(0, str(plugin_dir.parent))
+        try:
+            packaged_main = importlib.import_module(f"{plugin_dir.name}.main")
+        finally:
+            sys.path.pop(0)
+        self.assertTrue(hasattr(packaged_main, "MuteWheelPlugin"))
 
 
 if __name__ == "__main__":
