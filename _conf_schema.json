@@ -1,0 +1,41 @@
+{
+  "animation_display_seconds": {
+    "description": "转盘 GIF 展示秒数",
+    "type": "float",
+    "default": 3.0
+  },
+  "freeze_display_seconds": {
+    "description": "抽奖定格图展示秒数",
+    "type": "float",
+    "default": 3.0
+  },
+  "countdown_seconds": {
+    "description": "公布结果后到执行禁言的等待秒数",
+    "type": "float",
+    "default": 30.0,
+    "hint": "抽取者可在此期间发送 wssb 或“亚托莉我错了”求饶。"
+  },
+  "cleanup_display_seconds": {
+    "description": "求饶、救援或临时提示文案展示秒数",
+    "type": "float",
+    "default": 3.0
+  },
+  "rescue_window_seconds": {
+    "description": "禁言执行后的 nssb 救援窗口秒数",
+    "type": "int",
+    "default": 300,
+    "hint": "短禁言取实际禁言时长；设为 0 表示整个禁言期间均可救援。窗口结束后该群可开始新一轮。"
+  },
+  "max_mute_seconds": {
+    "description": "单次实际禁言时长上限（秒）",
+    "type": "int",
+    "default": 2592000,
+    "hint": "代码还会强制限制在 QQ 常见的 30 天上限内。轮盘的“1年”默认按 30 天执行。"
+  },
+  "recall_user_messages": {
+    "description": "收尾时同时撤回触发、求饶和救援者的消息",
+    "type": "bool",
+    "default": true,
+    "hint": "需要机器人拥有群管理员权限；无权限时仍会尽力撤回机器人自己发送的消息。"
+  }
+}
