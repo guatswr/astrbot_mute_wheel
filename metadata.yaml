@@ -4,7 +4,7 @@ desc: 发送禁言转盘动画并随机禁言，支持本人限时求饶、群�
 short_desc: 带求饶和救援机制的 QQ 群禁言大转盘。
 version: v1.0.0
 author: Taropoi
-repo: ""
+repo: "https://github.com/guatswr/astrbot_mute_wheel"
 support_platforms:
   - aiocqhttp
 astrbot_version: ">=4.16"
