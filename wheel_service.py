@@ -224,7 +224,6 @@ class WheelService:
                 notice = copywriting.PLEA_TOO_LATE_NOTICE
             else:
                 session.state = "pardoned"
-                session.track_user_message(incoming_id)
                 task = session.task
 
         if notice is not None:
@@ -285,9 +284,6 @@ class WheelService:
                     session.state = "rescued"
                     task = session.task
 
-                if notice is None:
-                    session.track_user_message(incoming_id)
-
         if notice is not None:
             await self._temporary_notice(
                 event.bot,
@@ -315,12 +311,11 @@ class WheelService:
         message: list[dict[str, Any]],
     ) -> None:
         try:
-            message_id = await send_group_message(
+            await send_group_message(
                 session.bot,
                 session.group_id,
                 message,
             )
-            session.track_bot_message(message_id)
         except Exception:
             logger.exception("禁言大转盘发送收尾文案失败。")
 

@@ -207,7 +207,7 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
             [action for action, _params in bot.api.actions],
         )
 
-    async def test_plea_cancels_pending_round_and_cleans_messages(self) -> None:
+    async def test_plea_keeps_command_and_success_copy(self) -> None:
         service = self.make_service()
         bot = FakeBot()
         outcome = models_module.WHEEL_OUTCOMES[3]
@@ -221,7 +221,7 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
             state="pending",
         )
         session.track_user_message(50)
-        session.track_bot_message(101)
+        session.track_bot_message(88)
         session.task = asyncio.create_task(asyncio.sleep(3600))
         service._sessions[123] = session
 
@@ -237,9 +237,11 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
             for action, params in bot.api.actions
             if action == "delete_msg"
         }
-        self.assertTrue({50, 51, 101}.issubset(recalled))
+        self.assertTrue({50, 88}.issubset(recalled))
+        self.assertNotIn(51, recalled)
+        self.assertNotIn(101, recalled)
 
-    async def test_other_member_can_unmute(self) -> None:
+    async def test_rescue_keeps_command_and_success_copy(self) -> None:
         service = self.make_service()
         bot = FakeBot()
         outcome = models_module.WHEEL_OUTCOMES[7]
@@ -252,6 +254,8 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
             effective_seconds=300,
             state="muted",
         )
+        session.track_user_message(50)
+        session.track_bot_message(88)
         service._sessions[123] = session
 
         await service.handle_rescue(FakeEvent(bot, 52), 123, 789)
@@ -265,6 +269,14 @@ class MuteWheelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(ban_calls), 1)
         self.assertEqual(ban_calls[0]["duration"], 0)
         self.assertEqual(ban_calls[0]["user_id"], 456)
+        recalled = {
+            params["message_id"]
+            for action, params in bot.api.actions
+            if action == "delete_msg"
+        }
+        self.assertTrue({50, 88}.issubset(recalled))
+        self.assertNotIn(52, recalled)
+        self.assertNotIn(101, recalled)
 
     def test_all_frames_exist_and_year_is_clamped(self) -> None:
         service = self.make_service()
